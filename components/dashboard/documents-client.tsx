@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import {
   UploadCloud,
   FileText,
@@ -11,6 +12,8 @@ import {
   Search,
 } from "lucide-react";
 import type { PolicyDoc } from "@/lib/types";
+import { DEMO_MODE } from "@/lib/config";
+import { uploadDocument, deleteDocument } from "@/app/actions/data";
 import { Panel, EmptyState } from "@/components/dashboard/ui";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,10 +22,18 @@ import { formatBytes, timeAgo, cn } from "@/lib/utils";
 const CATEGORIES = ["Benefits", "Insurance", "Policy", "Retirement", "Other"];
 
 export function DocumentsClient({ initial }: { initial: PolicyDoc[] }) {
+  const router = useRouter();
   const [docs, setDocs] = useState<PolicyDoc[]>(initial);
   const [dragging, setDragging] = useState(false);
   const [query, setQuery] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [, startTransition] = useTransition();
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Keep in sync with server data after a router.refresh().
+  useEffect(() => {
+    setDocs(initial);
+  }, [initial]);
 
   function guessCategory(name: string): string {
     const n = name.toLowerCase();
@@ -34,45 +45,66 @@ export function DocumentsClient({ initial }: { initial: PolicyDoc[] }) {
     return "Other";
   }
 
-  function addFiles(files: FileList | null) {
+  async function addFiles(files: FileList | null) {
     if (!files) return;
-    const incoming: PolicyDoc[] = Array.from(files)
-      .filter((f) => f.type === "application/pdf" || f.name.endsWith(".pdf"))
-      .map((f, i) => ({
-        id: `new-${Date.now()}-${i}`,
-        name: f.name,
-        category: guessCategory(f.name),
-        sizeBytes: f.size,
-        pages: 0,
-        chunks: 0,
-        status: "processing" as const,
-        uploadedAt: new Date().toISOString(),
-      }));
-    if (!incoming.length) return;
-    setDocs((d) => [...incoming, ...d]);
+    setError(null);
+    const pdfs = Array.from(files).filter(
+      (f) => f.type === "application/pdf" || f.name.endsWith(".pdf")
+    );
+    if (!pdfs.length) return;
 
-    // Simulate indexing completing (front-end demo only)
-    incoming.forEach((doc) => {
-      const delay = 1600 + Math.random() * 1800;
-      setTimeout(() => {
-        setDocs((d) =>
-          d.map((x) =>
-            x.id === doc.id
-              ? {
-                  ...x,
-                  status: "ready",
-                  pages: Math.max(4, Math.round(doc.sizeBytes / 90_000)),
-                  chunks: Math.max(12, Math.round(doc.sizeBytes / 24_000)),
-                }
-              : x
-          )
+    // Optimistic "processing" rows.
+    const optimistic: PolicyDoc[] = pdfs.map((f, i) => ({
+      id: `pending-${Date.now()}-${i}`,
+      name: f.name,
+      category: guessCategory(f.name),
+      sizeBytes: f.size,
+      pages: 0,
+      chunks: 0,
+      status: "processing",
+      uploadedAt: new Date().toISOString(),
+    }));
+    setDocs((d) => [...optimistic, ...d]);
+
+    if (DEMO_MODE) {
+      // No backend: simulate indexing completing.
+      optimistic.forEach((doc) => {
+        setTimeout(
+          () =>
+            setDocs((d) =>
+              d.map((x) =>
+                x.id === doc.id ? { ...x, status: "ready" } : x
+              )
+            ),
+          1500 + Math.random() * 1500
         );
-      }, delay);
-    });
+      });
+      return;
+    }
+
+    for (const file of pdfs) {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await uploadDocument(fd);
+      if (!res.ok) {
+        setError(res.error ?? "Upload failed.");
+        setDocs((d) => d.filter((x) => !x.id.startsWith("pending-")));
+        return;
+      }
+    }
+    startTransition(() => router.refresh());
   }
 
-  function remove(id: string) {
-    setDocs((d) => d.filter((x) => x.id !== id));
+  function remove(doc: PolicyDoc) {
+    setDocs((d) => d.filter((x) => x.id !== doc.id));
+    if (DEMO_MODE || doc.id.startsWith("pending-")) return;
+    startTransition(async () => {
+      const res = await deleteDocument(doc.id, doc.storagePath ?? null);
+      if (!res.ok) {
+        setError(res.error ?? "Delete failed.");
+        router.refresh();
+      }
+    });
   }
 
   const filtered = docs.filter((d) =>
@@ -91,7 +123,7 @@ export function DocumentsClient({ initial }: { initial: PolicyDoc[] }) {
         onDrop={(e) => {
           e.preventDefault();
           setDragging(false);
-          addFiles(e.dataTransfer.files);
+          void addFiles(e.dataTransfer.files);
         }}
         onClick={() => inputRef.current?.click()}
         className={cn(
@@ -116,9 +148,16 @@ export function DocumentsClient({ initial }: { initial: PolicyDoc[] }) {
           accept="application/pdf,.pdf"
           multiple
           hidden
-          onChange={(e) => addFiles(e.target.files)}
+          onChange={(e) => void addFiles(e.target.files)}
         />
       </div>
+
+      {error && (
+        <p className="mt-4 flex items-start gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          {error}
+        </p>
+      )}
 
       {/* list */}
       <Panel className="mt-6">
@@ -130,15 +169,17 @@ export function DocumentsClient({ initial }: { initial: PolicyDoc[] }) {
               base
             </p>
           </div>
-          <div className="relative w-full max-w-xs">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-2" />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search documents"
-              className="w-full rounded-lg border border-border bg-surface py-2 pl-9 pr-3 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20"
-            />
-          </div>
+          {docs.length > 0 && (
+            <div className="relative w-full max-w-xs">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-2" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search documents"
+                className="w-full rounded-lg border border-border bg-surface py-2 pl-9 pr-3 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20"
+              />
+            </div>
+          )}
         </div>
 
         {filtered.length === 0 ? (
@@ -163,14 +204,15 @@ export function DocumentsClient({ initial }: { initial: PolicyDoc[] }) {
                   <p className="text-xs text-muted">
                     {CATEGORIES.includes(doc.category) ? doc.category : "Other"} ·{" "}
                     {formatBytes(doc.sizeBytes)}
-                    {doc.status === "ready" &&
-                      ` · ${doc.pages} pages · ${doc.chunks} chunks`}{" "}
+                    {doc.status === "ready" && doc.chunks > 0
+                      ? ` · ${doc.pages} pages · ${doc.chunks} chunks`
+                      : ""}{" "}
                     · {timeAgo(doc.uploadedAt)}
                   </p>
                 </div>
                 <StatusBadge status={doc.status} />
                 <button
-                  onClick={() => remove(doc.id)}
+                  onClick={() => remove(doc)}
                   aria-label="Delete document"
                   className="grid h-8 w-8 place-items-center rounded-lg text-muted hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10"
                 >
@@ -181,12 +223,6 @@ export function DocumentsClient({ initial }: { initial: PolicyDoc[] }) {
           </ul>
         )}
       </Panel>
-
-      <div className="mt-4 flex justify-center">
-        <Button variant="ghost" size="sm" onClick={() => inputRef.current?.click()}>
-          <UploadCloud className="h-4 w-4" /> Upload more
-        </Button>
-      </div>
     </>
   );
 }
@@ -195,7 +231,7 @@ function StatusBadge({ status }: { status: PolicyDoc["status"] }) {
   if (status === "processing")
     return (
       <Badge tone="info">
-        <Loader2 className="h-3 w-3 animate-spin" /> Indexing
+        <Loader2 className="h-3 w-3 animate-spin" /> Uploading
       </Badge>
     );
   if (status === "error")

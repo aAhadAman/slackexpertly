@@ -1,17 +1,18 @@
 import { PageHeader } from "@/components/dashboard/ui";
 import { DocumentsClient } from "@/components/dashboard/documents-client";
-import { mockDocs } from "@/lib/mock";
+import { getDocuments } from "@/lib/data";
 
 export const metadata = { title: "Documents · Policy Expert" };
 
-export default function DocumentsPage() {
+export default async function DocumentsPage() {
+  const docs = await getDocuments();
   return (
     <>
       <PageHeader
         title="Documents"
         description="Upload the PDFs your bot answers from. Everything is indexed privately."
       />
-      <DocumentsClient initial={mockDocs} />
+      <DocumentsClient initial={docs} />
     </>
   );
 }

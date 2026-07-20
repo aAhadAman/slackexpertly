@@ -1,40 +1,88 @@
 "use client";
 
-import { useState } from "react";
-import { Check, Hash, Users, Sliders } from "lucide-react";
+import { useEffect, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { Check, Hash, Users, Sliders, Loader2 } from "lucide-react";
 import type { Integration } from "@/lib/types";
+import { DEMO_MODE } from "@/lib/config";
+import { toggleIntegration, saveBotSettings } from "@/app/actions/data";
 import { Panel } from "@/components/dashboard/ui";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-export function IntegrationsClient({ initial }: { initial: Integration[] }) {
+const CANDIDATE_CHANNELS = [
+  "#ask-hr",
+  "#benefits",
+  "#general",
+  "Direct messages",
+];
+
+export function IntegrationsClient({
+  initial,
+  threshold: initialThreshold,
+  channels: activeChannels,
+}: {
+  initial: Integration[];
+  threshold: number;
+  channels: string[];
+}) {
+  const router = useRouter();
   const [items, setItems] = useState<Integration[]>(initial);
-  const [threshold, setThreshold] = useState(70);
-  const [channels, setChannels] = useState<Record<string, boolean>>({
-    "#ask-hr": true,
-    "#benefits": true,
-    "#general": false,
-    "Direct messages": true,
-  });
+  const [threshold, setThreshold] = useState(initialThreshold);
+  const [channels, setChannels] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(
+      CANDIDATE_CHANNELS.map((c) => [c, activeChannels.includes(c)])
+    )
+  );
+  const [saved, setSaved] = useState(false);
+  const [pending, startTransition] = useTransition();
+
+  useEffect(() => {
+    setItems(initial);
+  }, [initial]);
 
   function toggle(id: Integration["id"]) {
+    const target = items.find((x) => x.id === id);
+    const next = !target?.connected;
     setItems((it) =>
       it.map((x) =>
         x.id === id
           ? {
               ...x,
-              connected: !x.connected,
-              workspace: !x.connected
+              connected: next,
+              workspace: next
                 ? id === "slack"
-                  ? "northwind.slack.com"
-                  : "Northwind (Teams)"
+                  ? "your-workspace.slack.com"
+                  : "Your org (Teams)"
                 : undefined,
-              connectedAt: !x.connected ? new Date().toISOString() : undefined,
             }
           : x
       )
     );
+    if (!DEMO_MODE) {
+      startTransition(async () => {
+        await toggleIntegration(id, next);
+        router.refresh();
+      });
+    }
+  }
+
+  function save() {
+    const active = CANDIDATE_CHANNELS.filter((c) => channels[c]);
+    if (DEMO_MODE) {
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+      return;
+    }
+    startTransition(async () => {
+      await saveBotSettings({
+        confidence_threshold: threshold,
+        active_channels: active,
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    });
   }
 
   return (
@@ -104,14 +152,14 @@ export function IntegrationsClient({ initial }: { initial: Integration[] }) {
         <div className="mt-5">
           <label className="text-sm font-medium">Active channels</label>
           <div className="mt-2 grid gap-2 sm:grid-cols-2">
-            {Object.keys(channels).map((c) => (
+            {CANDIDATE_CHANNELS.map((c) => (
               <label
                 key={c}
                 className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-border px-3 py-2 text-sm hover:bg-surface-2"
               >
                 <input
                   type="checkbox"
-                  checked={channels[c]}
+                  checked={!!channels[c]}
                   onChange={() =>
                     setChannels((s) => ({ ...s, [c]: !s[c] }))
                   }
@@ -125,9 +173,7 @@ export function IntegrationsClient({ initial }: { initial: Integration[] }) {
 
         <div className="mt-6">
           <div className="flex items-center justify-between">
-            <label className="text-sm font-medium">
-              Confidence threshold
-            </label>
+            <label className="text-sm font-medium">Confidence threshold</label>
             <span className="text-sm font-semibold text-brand-600">
               {threshold}%
             </span>
@@ -146,8 +192,16 @@ export function IntegrationsClient({ initial }: { initial: Integration[] }) {
           </p>
         </div>
 
-        <div className="mt-6 border-t border-border pt-4">
-          <Button size="sm">Save settings</Button>
+        <div className="mt-6 flex items-center gap-3 border-t border-border pt-4">
+          <Button size="sm" onClick={save} disabled={pending}>
+            {pending && <Loader2 className="h-4 w-4 animate-spin" />} Save
+            settings
+          </Button>
+          {saved && (
+            <span className="text-sm text-emerald-600 dark:text-emerald-400">
+              Saved!
+            </span>
+          )}
         </div>
       </Panel>
     </>

@@ -1,32 +1,42 @@
 "use client";
 
 import { useState } from "react";
-import { Check, CreditCard, Download, Sparkles } from "lucide-react";
+import { Check, CreditCard, Receipt, Sparkles } from "lucide-react";
 import { PLANS, type PlanId } from "@/lib/config";
-import { Panel } from "@/components/dashboard/ui";
+import { Panel, EmptyState } from "@/components/dashboard/ui";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-const INVOICES = [
-  { id: "INV-0007", date: "Jul 1, 2026", amount: "$99.00", status: "Paid" },
-  { id: "INV-0006", date: "Jun 1, 2026", amount: "$99.00", status: "Paid" },
-  { id: "INV-0005", date: "May 1, 2026", amount: "$99.00", status: "Paid" },
-];
+function trialDaysLeft(iso: string | null): number | null {
+  if (!iso) return null;
+  const diff = new Date(iso).getTime() - Date.now();
+  if (diff <= 0) return 0;
+  return Math.ceil(diff / (24 * 60 * 60 * 1000));
+}
 
-export function BillingClient() {
-  const [current, setCurrent] = useState<PlanId>("team");
+export function BillingClient({
+  currentPlan,
+  status,
+  trialEndsAt,
+}: {
+  currentPlan: PlanId;
+  status: string;
+  trialEndsAt: string | null;
+}) {
+  const [current, setCurrent] = useState<PlanId>(currentPlan);
   const [notice, setNotice] = useState<string | null>(null);
 
   function choose(id: PlanId) {
     if (id === current) return;
     setCurrent(id);
     setNotice(
-      `Plan change to ${PLANS.find((p) => p.id === id)?.name} will be handled by Stripe Checkout once billing is connected.`
+      `Plan change to ${PLANS.find((p) => p.id === id)?.name} will be completed via Stripe Checkout once billing is connected.`
     );
   }
 
   const plan = PLANS.find((p) => p.id === current)!;
+  const daysLeft = trialDaysLeft(trialEndsAt);
 
   return (
     <>
@@ -42,14 +52,15 @@ export function BillingClient() {
               {plan.name} · ${plan.price}/mo
             </p>
             <p className="mt-1 text-sm text-brand-100">
-              {plan.seats} · Trial ends in 11 days
+              {plan.seats}
+              {status === "trialing" && daysLeft !== null
+                ? ` · Trial ends in ${daysLeft} day${daysLeft === 1 ? "" : "s"}`
+                : ""}
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="rounded-lg bg-white/15 px-3 py-1.5 text-sm font-medium">
-              Free trial
-            </span>
-          </div>
+          <span className="rounded-lg bg-white/15 px-3 py-1.5 text-sm font-medium capitalize">
+            {status === "trialing" ? "Free trial" : status}
+          </span>
         </div>
       </Panel>
 
@@ -128,35 +139,12 @@ export function BillingClient() {
       {/* invoices */}
       <Panel className="mt-6">
         <h2 className="font-semibold">Billing history</h2>
-        <div className="mt-3 overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs uppercase tracking-wider text-muted-2">
-                <th className="py-2 pr-4 font-medium">Invoice</th>
-                <th className="py-2 pr-4 font-medium">Date</th>
-                <th className="py-2 pr-4 font-medium">Amount</th>
-                <th className="py-2 pr-4 font-medium">Status</th>
-                <th className="py-2 font-medium"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {INVOICES.map((inv) => (
-                <tr key={inv.id} className="border-b border-border last:border-0">
-                  <td className="py-3 pr-4 font-medium">{inv.id}</td>
-                  <td className="py-3 pr-4 text-muted">{inv.date}</td>
-                  <td className="py-3 pr-4">{inv.amount}</td>
-                  <td className="py-3 pr-4">
-                    <Badge tone="success">{inv.status}</Badge>
-                  </td>
-                  <td className="py-3 text-right">
-                    <button className="inline-flex items-center gap-1 text-muted hover:text-foreground">
-                      <Download className="h-4 w-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="mt-3">
+          <EmptyState
+            icon={<Receipt className="h-6 w-6" />}
+            title="No invoices yet"
+            description="Invoices will appear here once your subscription starts through Stripe."
+          />
         </div>
       </Panel>
     </>

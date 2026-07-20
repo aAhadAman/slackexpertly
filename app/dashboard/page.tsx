@@ -11,12 +11,11 @@ import {
 } from "lucide-react";
 import { getSessionUser } from "@/lib/auth";
 import {
-  mockStats,
-  mockWeeklyVolume,
-  mockEscalations,
-  mockDocs,
-  mockIntegrations,
-} from "@/lib/mock";
+  getOverview,
+  getEscalations,
+  getDocuments,
+  getIntegrations,
+} from "@/lib/data";
 import { PageHeader, StatCard, Panel } from "@/components/dashboard/ui";
 import { VolumeChart } from "@/components/dashboard/volume-chart";
 import { Badge } from "@/components/ui/badge";
@@ -26,17 +25,26 @@ import { timeAgo } from "@/lib/utils";
 export const metadata = { title: "Overview · Policy Expert" };
 
 export default async function OverviewPage() {
-  const user = await getSessionUser();
+  const [user, { stats, weekly }, escalations, docs, integrations] =
+    await Promise.all([
+      getSessionUser(),
+      getOverview(),
+      getEscalations(),
+      getDocuments(),
+      getIntegrations(),
+    ]);
+
   const firstName = user?.name.split(" ")[0] ?? "there";
-  const openEscalations = mockEscalations.filter((e) => e.status === "open");
-  const readyDocs = mockDocs.filter((d) => d.status === "ready").length;
-  const slack = mockIntegrations.find((i) => i.id === "slack");
+  const openEscalations = escalations.filter((e) => e.status === "open");
+  const readyDocs = docs.filter((d) => d.status === "ready").length;
+  const slack = integrations.find((i) => i.id === "slack");
+  const hasVolume = weekly.some((v) => v > 0);
 
   return (
     <>
       <PageHeader
         title={`Welcome back, ${firstName}`}
-        description="Here's how your benefits bot is doing this week."
+        description="Here's how your benefits bot is doing."
         actions={
           <ButtonLink href="/dashboard/playground" variant="outline" size="sm">
             <MessagesSquare className="h-4 w-4" /> Test the bot
@@ -48,28 +56,28 @@ export default async function OverviewPage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Questions this week"
-          value={String(mockStats.questionsThisWeek)}
-          sub="+18% vs last week"
+          value={String(stats.questionsThisWeek)}
+          sub="Answered in Slack / Teams"
           icon={<MessagesSquare className="h-5 w-5" />}
         />
         <StatCard
           label="Auto-answered"
-          value={`${Math.round(mockStats.deflectionRate * 100)}%`}
+          value={`${Math.round(stats.deflectionRate * 100)}%`}
           sub="Deflection rate"
           tone="success"
           icon={<TrendingUp className="h-5 w-5" />}
         />
         <StatCard
           label="Open escalations"
-          value={String(mockStats.openEscalations)}
+          value={String(stats.openEscalations)}
           sub="Awaiting your reply"
           tone="warning"
           icon={<Inbox className="h-5 w-5" />}
         />
         <StatCard
           label="Hours saved"
-          value={`${mockStats.hoursSaved}h`}
-          sub="Estimated this month"
+          value={`${stats.hoursSaved}h`}
+          sub="Estimated"
           tone="neutral"
           icon={<Clock className="h-5 w-5" />}
         />
@@ -83,21 +91,37 @@ export default async function OverviewPage() {
               <h2 className="font-semibold">Questions answered</h2>
               <p className="text-sm text-muted">Last 8 weeks</p>
             </div>
-            <Badge tone="success">
-              <TrendingUp className="h-3 w-3" /> Trending up
-            </Badge>
+            {hasVolume && (
+              <Badge tone="success">
+                <TrendingUp className="h-3 w-3" /> Trending up
+              </Badge>
+            )}
           </div>
-          <VolumeChart data={mockWeeklyVolume} />
+          {hasVolume ? (
+            <VolumeChart data={weekly} />
+          ) : (
+            <div className="flex h-40 flex-col items-center justify-center text-center">
+              <MessagesSquare className="h-8 w-8 text-muted-2" />
+              <p className="mt-2 text-sm text-muted">
+                No questions yet — once your bot is live in Slack/Teams, activity
+                shows up here.
+              </p>
+            </div>
+          )}
         </Panel>
 
         {/* setup checklist */}
         <Panel>
           <h2 className="font-semibold">Setup</h2>
-          <p className="text-sm text-muted">Your bot is live 🎉</p>
+          <p className="text-sm text-muted">Get your bot live in 3 steps.</p>
           <ul className="mt-4 space-y-3">
             <SetupRow
-              done
-              label={`${readyDocs} documents indexed`}
+              done={readyDocs > 0}
+              label={
+                readyDocs > 0
+                  ? `${readyDocs} document${readyDocs === 1 ? "" : "s"} indexed`
+                  : "Upload your policy PDFs"
+              }
               href="/dashboard/documents"
               icon={<FileText className="h-4 w-4" />}
             />
@@ -124,9 +148,7 @@ export default async function OverviewPage() {
         <div className="mb-4 flex items-center justify-between">
           <div>
             <h2 className="font-semibold">Needs your attention</h2>
-            <p className="text-sm text-muted">
-              Questions the bot routed to you
-            </p>
+            <p className="text-sm text-muted">Questions the bot routed to you</p>
           </div>
           <Link
             href="/dashboard/escalations"
@@ -135,20 +157,29 @@ export default async function OverviewPage() {
             View all <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
-        <ul className="divide-y divide-border">
-          {openEscalations.slice(0, 3).map((e) => (
-            <li key={e.id} className="flex items-start gap-3 py-3">
-              <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-amber-400" />
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium">{e.question}</p>
-                <p className="mt-0.5 text-xs text-muted">
-                  {e.employee} · {e.channel} · {timeAgo(e.askedAt)}
-                </p>
-              </div>
-              <Badge tone="warning">Open</Badge>
-            </li>
-          ))}
-        </ul>
+        {openEscalations.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-8 text-center">
+            <CheckCircle2 className="h-7 w-7 text-emerald-500" />
+            <p className="mt-2 text-sm text-muted">
+              Nothing waiting on you — the bot is handling things.
+            </p>
+          </div>
+        ) : (
+          <ul className="divide-y divide-border">
+            {openEscalations.slice(0, 3).map((e) => (
+              <li key={e.id} className="flex items-start gap-3 py-3">
+                <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-amber-400" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium">{e.question}</p>
+                  <p className="mt-0.5 text-xs text-muted">
+                    {e.employee} · {e.channel} · {timeAgo(e.askedAt)}
+                  </p>
+                </div>
+                <Badge tone="warning">Open</Badge>
+              </li>
+            ))}
+          </ul>
+        )}
       </Panel>
     </>
   );

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import {
   Inbox,
   Send,
@@ -10,6 +11,8 @@ import {
   Filter,
 } from "lucide-react";
 import type { Escalation, EscalationStatus } from "@/lib/types";
+import { DEMO_MODE } from "@/lib/config";
+import { setEscalationStatus } from "@/app/actions/data";
 import { Panel, EmptyState } from "@/components/dashboard/ui";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,16 +21,28 @@ import { timeAgo, cn } from "@/lib/utils";
 type Filter = "open" | "all";
 
 export function EscalationsClient({ initial }: { initial: Escalation[] }) {
+  const router = useRouter();
   const [items, setItems] = useState<Escalation[]>(initial);
   const [filter, setFilter] = useState<Filter>("open");
   const [replyingId, setReplyingId] = useState<string | null>(null);
   const [reply, setReply] = useState("");
+  const [, startTransition] = useTransition();
 
-  function setStatus(id: string, status: EscalationStatus) {
+  useEffect(() => {
+    setItems(initial);
+  }, [initial]);
+
+  function setStatus(id: string, status: EscalationStatus, answer?: string) {
     setItems((it) => it.map((x) => (x.id === id ? { ...x, status } : x)));
     if (replyingId === id) {
       setReplyingId(null);
       setReply("");
+    }
+    if (!DEMO_MODE) {
+      startTransition(async () => {
+        await setEscalationStatus(id, status, answer);
+        router.refresh();
+      });
     }
   }
 
@@ -105,7 +120,7 @@ export function EscalationsClient({ initial }: { initial: Escalation[] }) {
                         <Button
                           size="sm"
                           disabled={!reply.trim()}
-                          onClick={() => setStatus(e.id, "answered")}
+                          onClick={() => setStatus(e.id, "answered", reply)}
                         >
                           <Send className="h-4 w-4" /> Send &amp; teach
                         </Button>

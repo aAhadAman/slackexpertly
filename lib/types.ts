@@ -9,6 +9,7 @@ export interface PolicyDoc {
   chunks: number;
   status: DocStatus;
   uploadedAt: string; // ISO
+  storagePath?: string | null;
 }
 
 export type EscalationStatus = "open" | "answered" | "dismissed";

@@ -1,23 +1,52 @@
 "use client";
 
-import { useState } from "react";
-import { Save, Trash2 } from "lucide-react";
+import { useState, useTransition } from "react";
+import { Save, Trash2, Loader2 } from "lucide-react";
+import { DEMO_MODE } from "@/lib/config";
+import { saveOrgProfile, saveBotSettings } from "@/app/actions/data";
 import { Panel } from "@/components/dashboard/ui";
 import { Button } from "@/components/ui/button";
+
+type Tone = "friendly" | "professional" | "concise";
 
 export function SettingsClient({
   org,
   email,
+  botName,
+  botTone,
+  fallbackMessage,
 }: {
   org: string;
   email: string;
+  botName: string;
+  botTone: Tone;
+  fallbackMessage: string;
 }) {
+  const [name, setName] = useState(org);
+  const [bName, setBName] = useState(botName);
+  const [tone, setTone] = useState<Tone>(botTone);
+  const [fallback, setFallback] = useState(fallbackMessage);
   const [saved, setSaved] = useState(false);
-  const [tone, setTone] = useState("friendly");
+  const [pending, startTransition] = useTransition();
 
   function save() {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    if (DEMO_MODE) {
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+      return;
+    }
+    startTransition(async () => {
+      await Promise.all([
+        saveOrgProfile(name),
+        saveBotSettings({
+          bot_name: bName,
+          bot_tone: tone,
+          fallback_message: fallback,
+        }),
+      ]);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    });
   }
 
   return (
@@ -27,8 +56,12 @@ export function SettingsClient({
         <h2 className="font-semibold">Organization</h2>
         <p className="text-sm text-muted">Basic details about your workspace.</p>
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
-          <Field label="Company name" defaultValue={org} />
-          <Field label="Admin email" defaultValue={email} type="email" />
+          <Field
+            label="Company name"
+            value={name}
+            onChange={setName}
+          />
+          <Field label="Admin email" value={email} type="email" readOnly />
         </div>
       </Panel>
 
@@ -39,11 +72,11 @@ export function SettingsClient({
           How your bot introduces itself and the tone it answers in.
         </p>
         <div className="mt-5 space-y-4">
-          <Field label="Bot display name" defaultValue="Policy Expert" />
+          <Field label="Bot display name" value={bName} onChange={setBName} />
           <div>
             <label className="mb-1.5 block text-sm font-medium">Tone</label>
             <div className="flex flex-wrap gap-2">
-              {["friendly", "professional", "concise"].map((t) => (
+              {(["friendly", "professional", "concise"] as Tone[]).map((t) => (
                 <button
                   key={t}
                   onClick={() => setTone(t)}
@@ -65,7 +98,8 @@ export function SettingsClient({
             </label>
             <textarea
               rows={2}
-              defaultValue="I'm not fully sure about that one — I've passed it to our HR team and they'll get back to you shortly."
+              value={fallback}
+              onChange={(e) => setFallback(e.target.value)}
               className="w-full rounded-lg border border-border bg-surface px-3.5 py-2.5 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20"
             />
           </div>
@@ -85,8 +119,13 @@ export function SettingsClient({
       </Panel>
 
       <div className="flex items-center gap-3">
-        <Button onClick={save}>
-          <Save className="h-4 w-4" /> Save changes
+        <Button onClick={save} disabled={pending}>
+          {pending ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Save className="h-4 w-4" />
+          )}{" "}
+          Save changes
         </Button>
         {saved && (
           <span className="text-sm text-emerald-600 dark:text-emerald-400">
@@ -114,20 +153,29 @@ export function SettingsClient({
 
 function Field({
   label,
-  defaultValue,
+  value,
+  onChange,
   type = "text",
+  readOnly,
 }: {
   label: string;
-  defaultValue?: string;
+  value: string;
+  onChange?: (v: string) => void;
   type?: string;
+  readOnly?: boolean;
 }) {
   return (
     <div>
       <label className="mb-1.5 block text-sm font-medium">{label}</label>
       <input
         type={type}
-        defaultValue={defaultValue}
-        className="w-full rounded-lg border border-border bg-surface px-3.5 py-2.5 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20"
+        value={value}
+        readOnly={readOnly}
+        onChange={onChange ? (e) => onChange(e.target.value) : undefined}
+        className={
+          "w-full rounded-lg border border-border bg-surface px-3.5 py-2.5 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20 " +
+          (readOnly ? "text-muted" : "")
+        }
       />
     </div>
   );
