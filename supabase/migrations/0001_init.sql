@@ -73,14 +73,17 @@ create table if not exists public.escalations (
 create table if not exists public.integrations (
   id           uuid primary key default gen_random_uuid(),
   org_id       uuid not null references public.organizations(id) on delete cascade,
-  provider     text not null check (provider in ('slack','teams')),
-  connected    boolean not null default false,
-  workspace    text,
-  config       jsonb not null default '{}'::jsonb,
-  connected_at timestamptz,
-  created_at   timestamptz not null default now(),
+  provider       text not null check (provider in ('slack','teams')),
+  connected      boolean not null default false,
+  workspace      text,
+  slack_team_id  text,   -- Slack workspace id (T…), used to route events → org
+  config         jsonb not null default '{}'::jsonb,  -- holds bot_token, etc.
+  connected_at   timestamptz,
+  created_at     timestamptz not null default now(),
   unique (org_id, provider)
 );
+create index if not exists integrations_team_idx
+  on public.integrations(slack_team_id);
 
 -- Analytics log: one row per question the bot handled (written by the backend).
 create table if not exists public.questions (
