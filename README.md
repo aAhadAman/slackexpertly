@@ -1,36 +1,54 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# The Policy Expert — Frontend
 
-## Getting Started
+The HR-manager dashboard for **The Policy Expert**: a self-serve AI benefits bot
+for Slack/Teams. Upload policy PDFs, connect a workspace, and give employees
+instant, cited answers. Built with **Next.js 16 (App Router) + TypeScript +
+Tailwind v4**.
 
-First, run the development server:
+## What's inside
+
+| Route | Purpose |
+| :--- | :--- |
+| `/` | Marketing landing page (hero, how-it-works, features, pricing, FAQ) |
+| `/login`, `/signup` | Auth screens (Supabase Auth, or simulated in demo mode) |
+| `/dashboard` | Overview: usage stats, weekly volume chart, setup checklist, escalations |
+| `/dashboard/documents` | Drag-and-drop PDF upload + document management |
+| `/dashboard/playground` | "Test the bot" chat — mirrors the Slack/Teams experience |
+| `/dashboard/escalations` | Inbox of low-confidence questions routed to HR |
+| `/dashboard/integrations` | Connect Slack/Teams, choose channels, set confidence threshold |
+| `/dashboard/billing` | Plan management + invoices (wired to Stripe later) |
+| `/dashboard/settings` | Org, bot persona/tone, notifications |
+
+## Running it
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev        # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Demo mode (default)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+With no Supabase env vars set, the app runs in **demo mode**:
+- Any email + a 6-character password signs you in.
+- All data (documents, escalations, analytics) comes from `lib/mock.ts`.
+- Uploads and chat are simulated on the client so you can click through everything.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+This lets you (and prospects) explore the whole product before any backend exists.
 
-## Learn More
+### Going live
 
-To learn more about Next.js, take a look at the following resources:
+Copy `.env.example` → `.env.local` and fill in the Supabase (and later Stripe /
+OpenAI) values. As soon as `NEXT_PUBLIC_SUPABASE_URL` and
+`NEXT_PUBLIC_SUPABASE_ANON_KEY` are present, real Supabase Auth takes over
+automatically — no code changes needed.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Architecture notes
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **Auth abstraction** lives in `lib/auth.ts` + `app/actions/auth.ts` and works
+  in both demo and Supabase modes behind one interface.
+- **Supabase clients**: `lib/supabase/client.ts` (browser) and `server.ts`
+  (server components/actions); both return `null` in demo mode.
+- **`proxy.ts`** refreshes the Supabase session (no-op in demo mode).
+- The Q&A/RAG itself runs in the **N8N + OpenAI + Supabase vector** backend
+  (not part of this repo yet). The `playground` uses a canned responder that you
+  later point at your real endpoint.
