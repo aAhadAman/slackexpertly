@@ -11,12 +11,12 @@ export default function SignupPage() {
         Start free — live in 60 seconds
       </h1>
       <p className="mt-1.5 text-sm text-muted">
-        No credit card required. Cancel anytime.
+        Free while in beta. No credit card required.
       </p>
 
       <ul className="mt-4 space-y-1.5">
         {[
-          "14-day free trial of the Team plan",
+          "Every feature free during beta",
           "Upload PDFs and connect Slack instantly",
         ].map((t) => (
           <li key={t} className="flex items-center gap-2 text-sm text-muted">

@@ -15,6 +15,19 @@ export const DEMO_MODE = !SUPABASE_URL || !SUPABASE_ANON_KEY;
 
 export const APP_NAME = "The Policy Expert";
 
+/** While in beta the product is free. Flip to false when paid plans launch. */
+export const BETA = true;
+
+/** Everything included during the free beta — shown on pricing + billing. */
+export const BETA_FEATURES = [
+  "Slack workspace connection",
+  "Unlimited policy documents",
+  "AI answers cited to your documents",
+  "HR escalation inbox",
+  "Usage analytics",
+  "Custom bot persona & tone",
+];
+
 export const PLANS = [
   {
     id: "starter",

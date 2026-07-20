@@ -15,7 +15,12 @@ export async function GET(request: Request) {
   const code = searchParams.get("code");
   const state = searchParams.get("state");
   const oauthError = searchParams.get("error");
-  const back = `${origin}/dashboard/integrations`;
+
+  // Use the configured public URL (not the request origin) so the redirect_uri
+  // in the token exchange matches the one used at the authorize step — the
+  // request origin can arrive as localhost behind a tunnel/proxy.
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? origin;
+  const back = `${appUrl}/dashboard/integrations`;
 
   if (oauthError) {
     return NextResponse.redirect(`${back}?slack=denied`);
@@ -30,7 +35,7 @@ export async function GET(request: Request) {
     return NextResponse.redirect(`${back}?slack=unauthorized`);
   }
 
-  const result = await exchangeSlackCode(code, `${origin}/api/slack/oauth`);
+  const result = await exchangeSlackCode(code, `${appUrl}/api/slack/oauth`);
   if (!result.ok || !result.botToken || !result.teamId) {
     return NextResponse.redirect(`${back}?slack=error`);
   }

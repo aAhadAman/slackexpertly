@@ -75,7 +75,7 @@ export default function LandingPage() {
             <Stat value="87%" label="of questions auto-answered" />
             <Stat value="10+ hrs" label="reclaimed per HR manager / wk" />
             <Stat value="<60s" label="from PDF to live bot" />
-            <Stat value="$99/mo" label="flat — not per seat" />
+            <Stat value="Free" label="while in beta" />
           </div>
         </section>
 
@@ -199,8 +199,8 @@ export default function LandingPage() {
         <section id="pricing" className="mx-auto max-w-6xl px-5 py-20">
           <SectionHeading
             eyebrow="Pricing"
-            title="Flat pricing. Not per seat."
-            subtitle="A no-brainer next to a $350+/mo competitor or a $4,000/mo extra hire. Start free, no card required."
+            title="Free while we're in beta"
+            subtitle="Every feature, no cost, no credit card while Policy Expert is in beta. Early users lock in the best pricing when paid plans launch."
           />
           <div className="mt-14">
             <Pricing />
